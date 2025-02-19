@@ -1,0 +1,64 @@
+#!/bin/bash
+
+set -eu
+
+HELPSTR="\
+Usage:\n\
+setup_bench big-merkle <num_subcircuits> <num_sha2_iters> <num_portals>
+OR
+setup_bench vkd <num_subcircuits>
+OR
+setup_bench vm <num_subcircuits> \
+"
+
+if [ -z ${1+x} ] || [ -z ${2+x} ]; then
+    echo -e "$HELPSTR"
+    exit 1
+fi
+
+CIRC_TYPE=$1
+NUM_SUBCIRCUITS=$2
+
+NUM_SHA2_ITERS=""
+NUM_PORTALS=""
+
+if [[ $CIRC_TYPE == "big-merkle" ]]; then
+    if [ -z ${3+x} ]; then
+        echo -e "$HELPSTR"
+        exit 1
+    fi
+
+    NUM_SHA2_ITERS=$3
+    NUM_PORTALS=$4
+    # nc=num subcircuits, ns=num sha2 iters, np=num portals
+    JOB_DESC="nc=${NUM_SUBCIRCUITS}_ns=${NUM_SHA2_ITERS}_np=${NUM_PORTALS}"
+
+elif [[ $CIRC_TYPE == "vkd" ]]; then
+    # nc=num subcircuits
+    JOB_DESC="nc=${NUM_SUBCIRCUITS}"
+elif [[ $CIRC_TYPE == "vm" ]]; then
+    # nc=num subcircuits
+    JOB_DESC="nc=${NUM_SUBCIRCUITS}"
+else
+    echo "Invalid circuit type $CIRC_TYPE"
+    echo -e "$HELPSTR"
+    exit 1
+fi
+
+
+
+DATETIME=$(printf '%(%Y%m%d.%H%M%S)T\n' -1)
+LOG_OUT="setup_out-${CIRC_TYPE}-${JOB_DESC}-${DATETIME}.txt"
+LOG_ERR="setup_err-${CIRC_TYPE}-${JOB_DESC}-${DATETIME}.txt"
+KEYFILE_OUT="pks-${CIRC_TYPE}-${JOB_DESC}.bin"
+
+
+srun \
+    --time 1:00:00 \
+    --account imiers-prj-cmsc \
+    --out=$LOG_OUT \
+    --error=$LOG_ERR \
+    --ntasks=1 \
+    --mem-per-cpu=4000 \
+    --cpus-per-task=128 \
+    setup_task.sh $CIRC_TYPE $KEYFILE_OUT $NUM_SUBCIRCUITS $NUM_SHA2_ITERS $NUM_PORTALS 
