@@ -4,7 +4,7 @@ use std::{collections::HashMap, error::Error as ErrorTrait, fmt, marker::Phantom
 
 use crate::vkd::hash::*;
 use crate::vkd::util::split;
-use ark_bls12_381::Fr;
+use ark_bn254::Fr;
 use ark_crypto_primitives::Error;
 use ark_serialize::{CanonicalDeserialize, CanonicalSerialize};
 use num_bigint::BigUint;

@@ -275,7 +275,7 @@ mod tests {
     use crate::portal_manager::ram_portal_manager::AddressManager;
     use crate::portal_manager::{PortalManager, RamProverPortalManager, SetupRamPortalManager};
     use crate::transcript::{RamRunningEvaluationVar, RamTranscriptEntry, RamTranscriptEntryVar};
-    use ark_bls12_381::Fr;
+    use ark_bn254::Fr;
     use ark_r1cs_std::alloc::AllocVar;
     use ark_r1cs_std::eq::EqGadget;
     use ark_r1cs_std::fields::fp::FpVar;

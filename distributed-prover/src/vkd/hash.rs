@@ -1,7 +1,7 @@
 use crate::poseidon_util::gen_poseidon_params;
 use crate::vkd::util::*;
 use crate::vkd::{InnerHash, INNER_HASH_SIZE};
-use ark_bls12_381::Fr;
+use ark_bn254::Fr;
 use ark_crypto_primitives::crh::poseidon::constraints::{
     CRHGadget, CRHParametersVar, TwoToOneCRHGadget,
 };
@@ -185,7 +185,7 @@ pub fn hash_var(leaf: &Vec<UInt8<Fr>>) -> Result<[UInt8<Fr>; 32], SynthesisError
 #[cfg(test)]
 mod tests {
     use crate::vkd::hash::{hash, hash_leaf, hash_leaf_var, hash_var};
-    use ark_bls12_381::Fr;
+    use ark_bn254::Fr;
     use ark_crypto_primitives::sponge::Absorb;
     use ark_r1cs_std::fields::fp::FpVar;
     use ark_r1cs_std::fields::FieldVar;

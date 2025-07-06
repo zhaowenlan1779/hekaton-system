@@ -6,7 +6,7 @@ use distributed_prover::{
     CircuitWithPortals,
 };
 
-use ark_bls12_381::{Bls12_381 as E, Fr};
+use ark_bn254::{Bn254 as E, Fr};
 use ark_ip_proofs::tipa::Proof;
 use ark_serialize::{
     CanonicalDeserialize, CanonicalSerialize, Compress, SerializationError, Write,
@@ -35,6 +35,7 @@ pub type Stage1Response = distributed_prover::worker::Stage1Response<E>;
 pub const MERKLE_CIRCUIT_ID: &'static str = "BigMerkle circuit";
 pub const VKD_CIRCUIT_ID: &'static str = "VKD circuit";
 pub const VM_CIRCUIT_ID: &'static str = "VM circuit";
+pub const R1CS_CIRCUIT_ID: &'static str = "R1CS circuit";
 
 #[derive(CanonicalSerialize, CanonicalDeserialize)]
 pub struct ProvingKeys {

@@ -182,7 +182,7 @@ impl Default for Unsigned32 {
 #[cfg(test)]
 mod tests {
     use crate::uint32::{Unsigned32, Unsigned32Var};
-    use ark_bls12_381::Fr;
+    use ark_bn254::Fr;
     use ark_r1cs_std::alloc::AllocVar;
     use ark_r1cs_std::R1CSVar;
     use ark_relations::r1cs::ConstraintSystem;

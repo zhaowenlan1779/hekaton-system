@@ -300,7 +300,7 @@ mod test {
 
     use crate::vkd::{MerkleTreeConcreteParameters, SparseMerkleTree, DEPTH};
     use crate::vm::VirtualMachineParameters;
-    use ark_bls12_381::{Bls12_381 as E, Fr};
+    use ark_bn254::{Bn254 as E, Fr};
     use ark_cp_groth16::verifier::prepare_verifying_key;
     use ark_ff::UniformRand;
     use ark_ip_proofs::tipa::TIPA;

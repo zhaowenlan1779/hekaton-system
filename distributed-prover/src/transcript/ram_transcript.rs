@@ -389,7 +389,7 @@ impl<F: PrimeField> ToConstraintFieldGadget<F> for RamTranscriptEntryVar<F> {
 mod test {
     use super::*;
 
-    use ark_bls12_381::Fr;
+    use ark_bn254::Fr;
     use ark_ff::UniformRand;
     use ark_relations::r1cs::{ConstraintSystem, ConstraintSystemRef};
     use ark_std::test_rng;

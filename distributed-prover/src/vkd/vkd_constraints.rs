@@ -9,7 +9,7 @@ use crate::vkd::{
     VerifiableKeyDirectoryCircuitParams, DEPTH, SPLIT_FACTOR,
 };
 use crate::CircuitWithPortals;
-use ark_bls12_381::Fr;
+use ark_bn254::Fr;
 use ark_crypto_primitives::crh::sha256::constraints::DigestVar;
 use ark_r1cs_std::alloc::{AllocVar, AllocationMode};
 use ark_r1cs_std::boolean::Boolean;
@@ -350,7 +350,7 @@ mod tests {
         VerifiableKeyDirectoryCircuit, VerifiableKeyDirectoryCircuitParams, DEPTH,
     };
     use crate::CircuitWithPortals;
-    use ark_bls12_381::Fr;
+    use ark_bn254::Fr;
     use ark_relations::r1cs::ConstraintSystem;
     use std::time::Instant;
 

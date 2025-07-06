@@ -14,7 +14,7 @@ use distributed_prover::{
     CircuitWithPortals,
 };
 
-use ark_bls12_381::{Bls12_381 as E, Fr};
+use ark_bn254::{Bn254 as E, Fr};
 use ark_cp_groth16::committer::CommitmentBuilder as G16CommitmentBuilder;
 use ark_ff::UniformRand;
 use rand::{Rng, SeedableRng};

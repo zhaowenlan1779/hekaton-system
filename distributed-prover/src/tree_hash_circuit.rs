@@ -5,22 +5,21 @@ use crate::{
     CircuitWithPortals,
 };
 
-use crate::vkd::util::*;
-use crate::vkd::{InnerHash, INNER_HASH_SIZE};
+use crate::vkd::{util::*, InnerHash, INNER_HASH_SIZE};
 use ark_crypto_primitives::crh::sha256::{
     constraints::{DigestVar, Sha256Gadget},
     digest::Digest,
     Sha256,
 };
 use ark_ff::PrimeField;
-use ark_r1cs_std::R1CSVar;
-use ark_r1cs_std::{alloc::AllocVar, bits::uint8::UInt8, eq::EqGadget, fields::fp::FpVar};
+use ark_r1cs_std::{alloc::AllocVar, bits::uint8::UInt8, eq::EqGadget, fields::fp::FpVar, R1CSVar};
 use ark_relations::{
     ns,
     r1cs::{ConstraintSystem, ConstraintSystemRef, SynthesisError},
 };
 use ark_serialize::{CanonicalDeserialize, CanonicalSerialize};
 use rand::Rng;
+use std::mem::take;
 
 pub(crate) type TestLeaf = [u8; 64];
 const EMPTY_LEAF: TestLeaf = [0u8; 64];
@@ -109,6 +108,72 @@ impl MerkleTreeCircuit {
 
         // Convert the final digest to a field element
         digest_to_fpvar(digest)
+    }
+
+    pub fn generate_constraints_full<F: PrimeField>(
+        &mut self,
+        cs: ConstraintSystemRef<F>,
+    ) -> Result<(), SynthesisError> {
+        let starting_num_constraints = cs.num_constraints();
+
+        let num_leaves = self.leaves.len();
+
+        let tree_size = num_leaves.next_power_of_two();
+        let num_levels = tree_size.trailing_zeros() + 1;
+        let mut prev_hash_variables : Vec<FpVar<F>> = vec![];
+        let mut hash_variables = vec![];
+        for level in 0..num_levels {
+            for sibling_idx in 0..(tree_size >> level) {
+                // Every non-padding node is a leaf, the root, or else a parent
+                let is_leaf = level == 0;
+                let is_root = level == num_levels - 1;
+
+                if is_leaf {
+                    // This is a leaf node. Get the leaf number
+
+                    // Witness the leaf
+                    let leaf_var =
+                        UInt8::new_witness_vec(ns!(cs, "leaf"), &self.leaves[sibling_idx])?;
+
+                    // Compute the leaf hash and store it in the portal manager
+                    let leaf_hash = self.iterated_sha256(&leaf_var)?;
+                    hash_variables.push(leaf_hash);
+                } else {
+                    // This is a non-root parent node. Get the left and right hashes
+                    let left = sibling_idx * 2;
+                    let right = sibling_idx * 2 + 1;
+                    let left_child_hash = prev_hash_variables[left].clone();
+                    let right_child_hash = prev_hash_variables[right].clone();
+
+                    // Convert the hashes back into bytes and concat them
+                    let left_bytes = fpvar_to_digest(&left_child_hash)?;
+                    let right_bytes = fpvar_to_digest(&right_child_hash)?;
+                    let concatted_bytes = [left_bytes, right_bytes].concat();
+
+                    // Compute the parent hash and store it in the portal manager
+                    let parent_hash = self.iterated_sha256(&concatted_bytes)?;
+                    hash_variables.push(parent_hash.clone());
+
+                    // Finally, if this is the root, verify that the parent hash equals the public hash
+                    // value
+                    if is_root {
+                        let expected_root_hash = input_digest(cs.clone(), self.root_hash)?;
+                        parent_hash.enforce_equal(&expected_root_hash)?;
+                    }
+                }
+            }
+
+            prev_hash_variables = take(&mut hash_variables);
+        }
+
+        // Print out how big this circuit was
+        let ending_num_constraints = cs.num_constraints();
+        println!(
+            "Test subcircuit costs {} constraints",
+            ending_num_constraints - starting_num_constraints
+        );
+
+        Ok(())
     }
 }
 
@@ -492,7 +557,7 @@ pub(crate) fn calculate_root(leaves: &[TestLeaf], params: MerkleTreeCircuitParam
     root
 }
 
-/******** TREE MATH ********/
+/// ****** TREE MATH *******
 
 // We use a mapping of subcircuit idx to tree node as follows. Stolen from the MLS spec
 //
@@ -548,10 +613,11 @@ fn root_idx(num_leaves: usize) -> u32 {
 #[cfg(test)]
 mod test {
     use super::*;
-    use crate::transcript::RomTranscriptEntry;
-    use crate::{portal_manager::SetupRomPortalManager, CircuitWithPortals};
-    use ark_bls12_381::Fr;
-    use ark_relations::r1cs::ConstraintSystem;
+    use crate::{
+        portal_manager::SetupRomPortalManager, transcript::RomTranscriptEntry, CircuitWithPortals,
+    };
+    use ark_bn254::Fr;
+    use ark_relations::r1cs::{ConstraintSystem, OptimizationGoal};
     use ark_std::{rand::Rng, test_rng};
 
     // Digests truncated to INNER_HASH_SIZE bytes and stored as portal wires. When we get the portal wire, we
@@ -607,6 +673,28 @@ mod test {
         }
 
         assert!(cs.is_satisfied().unwrap());
+    }
+
+    #[test]
+    fn test_merkle_tree_correctness_full() {
+        let mut rng = test_rng();
+        let circ_params = MerkleTreeCircuitParams {
+            num_leaves: 16,
+            num_sha_iters_per_subcircuit: 2,
+            num_portals_per_subcircuit: 0,
+        };
+
+        // Make a random Merkle tree
+        let mut circ = <MerkleTreeCircuit as CircuitWithPortals<Fr>>::rand(&mut rng, &circ_params);
+
+        // Make a fresh portal manager
+        let cs = ConstraintSystemRef::<Fr>::new(ConstraintSystem::default());
+        cs.set_optimization_goal(OptimizationGoal::Weight);
+
+        circ.generate_constraints_full(cs.clone()).unwrap();
+        cs.finalize();
+        assert!(cs.is_satisfied().unwrap());
+        println!("Num constraints: {}", cs.num_constraints());
     }
 
     // The other way of getting the portal trace is by just running the full circuit. This is very

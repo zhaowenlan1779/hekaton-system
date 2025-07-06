@@ -12,7 +12,7 @@ use crate::vkd::sparse_tree::{MerkleTreeParameters, MerkleTreePath};
 
 use crate::vkd::hash::{hash_inner_node_var, hash_leaf_var};
 use crate::vkd::util::*;
-use ark_bls12_381::Fr;
+use ark_bn254::Fr;
 use std::{borrow::Borrow, marker::PhantomData};
 
 #[derive(Clone)]

@@ -230,7 +230,7 @@ impl<F: PrimeField> ProverPortalManager<F> for RomProverPortalManager<F> {
 mod tests {
     use crate::portal_manager::{PortalManager, RomProverPortalManager, SetupRomPortalManager};
     use crate::transcript::{RomRunningEvaluationVar, RomTranscriptEntry, RomTranscriptEntryVar};
-    use ark_bls12_381::Fr;
+    use ark_bn254::Fr;
     use ark_r1cs_std::alloc::AllocVar;
     use ark_r1cs_std::eq::EqGadget;
     use ark_r1cs_std::fields::fp::FpVar;

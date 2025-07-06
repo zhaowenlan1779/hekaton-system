@@ -1,7 +1,7 @@
 use crate::portal_manager::PortalManager;
 use crate::vkd::hash::hash;
 use crate::vkd::{MerkleTreeParameters, MerkleTreePathVar, NodeType, SparseMerkleTree};
-use ark_bls12_381::Fr;
+use ark_bn254::Fr;
 use ark_r1cs_std::alloc::AllocVar;
 use ark_r1cs_std::fields::fp::FpVar;
 use ark_r1cs_std::prelude::UInt8;
@@ -95,7 +95,7 @@ pub fn merkle_path_verification(cs: ConstraintSystemRef<Fr>) {
 #[cfg(test)]
 mod tests {
     use crate::vm::memory::merkle_path_verification;
-    use ark_bls12_381::Fr;
+    use ark_bn254::Fr;
     use ark_relations::r1cs::ConstraintSystem;
 
     #[test]

@@ -21,7 +21,7 @@ pub struct CPGroth16<E: Pairing, QAP: R1CSToQAP = LibsnarkReduction> {
 
 #[cfg(test)]
 mod tests {
-    use ark_bls12_381::{Bls12_381 as E, Fr as F};
+    use ark_bn254::{Bn254 as E, Fr as F};
     use ark_ff::Field;
     use ark_groth16::r1cs_to_qap::LibsnarkReduction as QAP;
     use ark_r1cs_std::{alloc::AllocVar, eq::EqGadget, fields::fp::FpVar, prelude::FieldVar};

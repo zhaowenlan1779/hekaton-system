@@ -1,31 +1,30 @@
 #![allow(warnings)]
 
+use ark_relations::r1cs::{ConstraintSystem, ConstraintSystemRef, OptimizationGoal};
 use ark_std::{cfg_chunks, cfg_chunks_mut, cfg_into_iter, cfg_iter};
+use circom_compat::{write_witness, R1CSFile};
 use distributed_prover::{
-    tree_hash_circuit::{MerkleTreeCircuit, MerkleTreeCircuitParams},
-    vkd::{
+    partitioned_r1cs_circuit::{PartitionedR1CSCircuit, PartitionedR1CSCircuitParams}, tree_hash_circuit::{MerkleTreeCircuit, MerkleTreeCircuitParams}, vkd::{
         MerkleTreeParameters, VerifiableKeyDirectoryCircuit, VerifiableKeyDirectoryCircuitParams,
-    },
-    vm::{VirtualMachine, VirtualMachineParameters, MERKLE_MEMORY_DEPTH, REGISTER_NUM},
-    CircuitWithPortals,
+    }, vm::{VirtualMachine, VirtualMachineParameters, MERKLE_MEMORY_DEPTH, REGISTER_NUM}, CircuitWithPortals
 };
 
-use ark_bls12_381::{Bls12_381 as E, Fr};
+use ark_bn254::{Bn254 as E, Fr};
 use ark_serialize::{CanonicalDeserialize, CanonicalSerialize};
 use clap::{Parser, Subcommand};
 use mimalloc::MiMalloc;
 use mpi::{
     datatype::{Partition, PartitionMut},
+    request,
     topology::Process,
+    traits::*,
     Count,
 };
-use mpi::{request, traits::*};
 use mpi_snark::{
     construct_partitioned_buffer_for_scatter, construct_partitioned_mut_buffer_for_gather,
     coordinator::CoordinatorState,
     data_structures::{
-        ProvingKeys, Stage0Request, Stage0Response, Stage1Request, Stage1Response,
-        MERKLE_CIRCUIT_ID, VKD_CIRCUIT_ID, VM_CIRCUIT_ID,
+        ProvingKeys, Stage0Request, Stage0Response, Stage1Request, Stage1Response, MERKLE_CIRCUIT_ID, R1CS_CIRCUIT_ID, VKD_CIRCUIT_ID, VM_CIRCUIT_ID
     },
     deserialize_flattened_bytes, deserialize_from_packed_bytes, serialize_to_packed_vec,
     serialize_to_vec,
@@ -38,6 +37,7 @@ use std::{
     io::{Read, Write},
     num::NonZeroUsize,
     path::PathBuf,
+    time::Instant,
 };
 
 #[cfg(feature = "parallel")]
@@ -106,6 +106,23 @@ enum Command {
         key_out: PathBuf,
     },
 
+    WriteBigMerkleR1CS {
+        /// Test circuit param: Number of subcircuits. MUST be a power of two and greater than 1.
+        #[clap(long, value_name = "NUM")]
+        num_subcircuits: usize,
+
+        /// Test circuit param: Number of SHA256 iterations per subcircuit. MUST be at least 1.
+        #[clap(long, value_name = "NUM")]
+        num_sha2_iters: usize,
+
+        /// Path for the output coordinator key package
+        #[clap(long, value_name = "DIR")]
+        r1cs_out: PathBuf,
+
+        #[clap(long, value_name = "DIR")]
+        witness_out: PathBuf,
+    },
+
     SetupVkd {
         /// Test circuit param: Number of subcircuits. MUST be a power of two and greater than 1.
         #[clap(long, value_name = "NUM")]
@@ -128,6 +145,19 @@ enum Command {
         /// Number of cycles per subcircuit
         #[clap(long, value_name = "NUM")]
         num_cycles_per_subcircuit: usize,
+
+        /// Path for the output coordinator key package
+        #[clap(long, value_name = "DIR")]
+        key_out: PathBuf,
+    },
+
+    SetupR1CS {
+        /// Test circuit param: Number of subcircuits. MUST be a power of two and greater than 1.
+        #[clap(long, value_name = "NUM")]
+        num_subcircuits: usize,
+
+        #[clap(long, value_name = "DIR")]
+        circuit_file: String,
 
         /// Path for the output coordinator key package
         #[clap(long, value_name = "DIR")]
@@ -157,6 +187,12 @@ fn main() {
             num_portals,
             key_out,
         } => setup_big_merkle(key_out, num_subcircuits, num_sha2_iters, num_portals),
+        Command::WriteBigMerkleR1CS {
+            num_subcircuits,
+            num_sha2_iters,
+            r1cs_out,
+            witness_out,
+        } => write_big_merkle_r1cs(r1cs_out, witness_out, num_subcircuits, num_sha2_iters),
         Command::SetupVkd {
             num_subcircuits,
             key_out,
@@ -173,6 +209,15 @@ fn main() {
             VM_CONSTRAINTS_PER_CYCLE,
             num_cycles_per_subcircuit,
         ),
+        Command::SetupR1CS {
+            num_subcircuits,
+            circuit_file,
+            key_out
+        } => setup_r1cs(
+            key_out,
+            num_subcircuits,
+            circuit_file,
+        ),
         Command::Work {
             key_file,
             num_workers,
@@ -187,7 +232,9 @@ fn main() {
             };
 
             let circ_id = proving_keys.get_id_str();
-            if circ_id == MERKLE_CIRCUIT_ID {
+            if circ_id == R1CS_CIRCUIT_ID {
+                work::<PartitionedR1CSCircuit<Fr>>(num_workers, proving_keys);
+            } else if circ_id == MERKLE_CIRCUIT_ID {
                 work::<MerkleTreeCircuit>(num_workers, proving_keys);
             } else if circ_id == VKD_CIRCUIT_ID {
                 // Taken from VerifiableKeyDirectoryCircuit::random(). This is how many
@@ -267,6 +314,49 @@ fn setup_big_merkle(
     f.write_all(&buf).unwrap();
 }
 
+fn write_big_merkle_r1cs(
+    r1cs_out_path: PathBuf,
+    witness_out_path: PathBuf,
+    num_subcircuits: usize,
+    num_sha_iterations: usize,
+) {
+    assert!(
+        num_subcircuits.is_power_of_two(),
+        "#subcircuits MUST be a power of 2"
+    );
+    assert!(num_subcircuits > 1, "num. of subcircuits MUST be > 1");
+    assert!(
+        num_sha_iterations > 0,
+        "num. of SHA256 iterations per subcircuit MUST be > 0"
+    );
+
+    let circ_params = MerkleTreeCircuitParams {
+        num_leaves: num_subcircuits / 2,
+        num_sha_iters_per_subcircuit: num_sha_iterations,
+        num_portals_per_subcircuit: 1,
+    };
+
+    let mut rng = rand::thread_rng();
+    let mut circ = <MerkleTreeCircuit as CircuitWithPortals<Fr>>::rand(&mut rng, &circ_params);
+    let cs = ConstraintSystemRef::<Fr>::new(ConstraintSystem::default());
+    cs.set_optimization_goal(OptimizationGoal::Weight);
+
+    circ.generate_constraints_full(cs.clone()).unwrap();
+    cs.finalize();
+
+    println!("Num wires {}", cs.num_instance_variables() + cs.num_witness_variables());
+
+    let file = R1CSFile::from_cs_slow(cs).unwrap();
+
+    let mut r1cs =
+        File::create(&r1cs_out_path).expect(&format!("could not create file {:?}", r1cs_out_path));
+    file.write(r1cs).unwrap();
+
+    let mut witness = File::create(&witness_out_path)
+        .expect(&format!("could not create file {:?}", witness_out_path));
+    write_witness(&file.witness, witness).unwrap();
+}
+
 fn setup_vkd(key_out_path: PathBuf, num_subcircuits: usize) {
     assert!(
         num_subcircuits.is_power_of_two(),
@@ -335,6 +425,32 @@ fn setup_vm(
     f.write_all(&buf).unwrap();
 }
 
+fn setup_r1cs(
+    key_out_path: PathBuf,
+    num_subcircuits: usize,
+    circuit_path: String,
+) {
+    assert!(
+        num_subcircuits.is_power_of_two(),
+        "#subcircuits MUST be a power of 2"
+    );
+    assert!(num_subcircuits > 1, "num. of subcircuits MUST be > 1");
+
+    let circ_params = PartitionedR1CSCircuitParams {
+        file_path: circuit_path,
+        num_subcircuits,
+    };
+
+    let pks = ProvingKeys::new::<PartitionedR1CSCircuit<Fr>>(circ_params, R1CS_CIRCUIT_ID.to_string());
+
+    let mut buf = Vec::new();
+    pks.serialize_uncompressed(&mut buf).unwrap();
+
+    let mut f =
+        File::create(&key_out_path).expect(&format!("could not create file {:?}", key_out_path));
+    f.write_all(&buf).unwrap();
+}
+
 fn work<P: CircuitWithPortals<Fr>>(num_workers: usize, proving_keys: ProvingKeys) {
     let (universe, _) = mpi::initialize_with_threading(mpi::Threading::Funneled).unwrap();
     let world = universe.world();
@@ -351,6 +467,7 @@ fn work<P: CircuitWithPortals<Fr>>(num_workers: usize, proving_keys: ProvingKeys
     let mut log = Vec::new();
     let very_start = start_timer_buf!(log, || format!("Node {rank}: Beginning work"));
 
+    let mut proof = None;
     if rank == root_rank {
         // Initial broadcast
 
@@ -358,8 +475,8 @@ fn work<P: CircuitWithPortals<Fr>>(num_workers: usize, proving_keys: ProvingKeys
         let mut coordinator_state = CoordinatorState::<P>::new(&proving_keys);
         end_timer_buf!(log, start);
 
-        /***************************************************************************/
-        /***************************************************************************/
+        /// ************************************************************************
+        /// ************************************************************************
         // Stage 0
         let start = start_timer_buf!(log, || format!("Coord: Generating stage0 requests"));
         let requests = coordinator_state.stage_0();
@@ -381,11 +498,11 @@ fn work<P: CircuitWithPortals<Fr>>(num_workers: usize, proving_keys: ProvingKeys
             .flatten()
             .collect::<Vec<_>>();
         println!("Finished coordinator gather 0");
-        /***************************************************************************/
-        /***************************************************************************/
+        /// ************************************************************************
+        /// ************************************************************************
 
-        /***************************************************************************/
-        /***************************************************************************/
+        /// ************************************************************************
+        /// ************************************************************************
         // Stage 1
         let start = start_timer_buf!(log, || format!("Coord: Processing stage0 responses"));
         let requests = coordinator_state.stage_1(&responses);
@@ -407,11 +524,11 @@ fn work<P: CircuitWithPortals<Fr>>(num_workers: usize, proving_keys: ProvingKeys
             .flatten()
             .collect::<Vec<_>>();
         println!("Finished coordinator gather 1");
-        /***************************************************************************/
-        /***************************************************************************/
+        /// ************************************************************************
+        /// ************************************************************************
 
         let start = start_timer_buf!(log, || format!("Coord: Aggregating"));
-        let _proof = coordinator_state.aggregate(&responses);
+        proof = Some(coordinator_state.aggregate(&responses));
         end_timer_buf!(log, start);
     } else {
         let current_num_threads = current_num_threads() - 1;
@@ -427,8 +544,8 @@ fn work<P: CircuitWithPortals<Fr>>(num_workers: usize, proving_keys: ProvingKeys
                 .collect::<Vec<_>>();
         end_timer_buf!(log, start);
 
-        /***************************************************************************/
-        /***************************************************************************/
+        /// ************************************************************************
+        /// ************************************************************************
         // Stage 0
 
         // Receive Stage 0 request
@@ -450,11 +567,11 @@ fn work<P: CircuitWithPortals<Fr>>(num_workers: usize, proving_keys: ProvingKeys
         send_responses(&mut log, rank, "stage0", &root_process, &responses);
         println!("Finished worker gather 0 for rank {rank}");
 
-        /***************************************************************************/
-        /***************************************************************************/
+        /// ************************************************************************
+        /// ************************************************************************
 
-        /***************************************************************************/
-        /***************************************************************************/
+        /// ************************************************************************
+        /// ************************************************************************
         // Stage 1
 
         // Receive Stage 1 request
@@ -480,6 +597,18 @@ fn work<P: CircuitWithPortals<Fr>>(num_workers: usize, proving_keys: ProvingKeys
     }
 
     end_timer_buf!(log, very_start);
+
+    if rank == root_rank {
+        let proof = proof.unwrap();
+
+        let mut bytes = Vec::with_capacity(CanonicalSerialize::compressed_size(&proof));
+        CanonicalSerialize::serialize_compressed(&proof, &mut bytes).unwrap();
+        println!("proof size compressed: {} bytes", bytes.len());
+
+        let mut bytes = Vec::with_capacity(CanonicalSerialize::uncompressed_size(&proof));
+        CanonicalSerialize::serialize_uncompressed(&proof, &mut bytes).unwrap();
+        println!("proof size uncompressed: {} bytes", bytes.len());
+    }
 
     println!("Rank {rank} log: {}", log.join(";"));
 }

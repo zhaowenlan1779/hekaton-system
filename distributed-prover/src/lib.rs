@@ -13,6 +13,7 @@ pub mod pairing_ops;
 pub mod poseidon_util;
 pub mod subcircuit_circuit;
 pub mod tree_hash_circuit;
+pub mod partitioned_r1cs_circuit;
 pub mod util;
 pub mod worker;
 

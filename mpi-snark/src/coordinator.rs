@@ -9,7 +9,7 @@ use distributed_prover::{
     CircuitWithPortals,
 };
 
-use ark_bls12_381::{Bls12_381 as E, Fr};
+use ark_bn254::{Bn254 as E, Fr};
 use ark_ip_proofs::tipa::TIPA;
 use ark_serialize::CanonicalDeserialize;
 use ark_std::{end_timer, start_timer};

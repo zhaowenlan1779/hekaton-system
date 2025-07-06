@@ -3,7 +3,7 @@ use crate::transcript::{MemType, TranscriptEntry};
 use crate::vm::memory::Memory;
 use crate::vm::{VirtualMachine, VirtualMachineParameters, REGISTER_NUM};
 use crate::CircuitWithPortals;
-use ark_bls12_381::Fr;
+use ark_bn254::Fr;
 use ark_ff::Field;
 use ark_r1cs_std::alloc::AllocVar;
 use ark_r1cs_std::fields::fp::FpVar;
@@ -197,7 +197,7 @@ mod tests {
     use crate::transcript::TranscriptEntry;
     use crate::vm::{VirtualMachine, VirtualMachineParameters};
     use crate::CircuitWithPortals;
-    use ark_bls12_381::Fr;
+    use ark_bn254::Fr;
     use ark_relations::r1cs::ConstraintSystem;
 
     #[test]

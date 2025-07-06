@@ -47,7 +47,7 @@ impl<F: PrimeField> VirtualMachine<F> {
 #[cfg(test)]
 mod tests {
     use crate::vm::{VirtualMachine, VirtualMachineParameters};
-    use ark_bls12_381::Fq;
+    use ark_bn254::Fq;
 
     #[test]
     fn test_virtual_machine() {

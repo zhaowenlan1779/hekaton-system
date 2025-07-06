@@ -11,7 +11,7 @@ use distributed_prover::{
 
 use std::collections::HashMap;
 
-use ark_bls12_381::{Bls12_381 as E, Fr as F};
+use ark_bn254::{Bn254 as E, Fr as F};
 use ark_cp_groth16::{MultiStageConstraintSynthesizer, MultiStageConstraintSystem};
 use ark_groth16::{r1cs_to_qap::LibsnarkReduction, Groth16};
 use ark_r1cs_std::fields::fp::FpVar;

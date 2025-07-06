@@ -2,7 +2,7 @@ use crate::vkd::{
     InnerHash, MerkleTreeError, MerkleTreeParameters, SparseMerkleTree, DEPTH, INNER_HASH_SIZE,
     PATH_LENGTH,
 };
-use ark_bls12_381::Fr;
+use ark_bn254::Fr;
 use ark_crypto_primitives::crh::sha256::constraints::DigestVar;
 use ark_crypto_primitives::sponge::Absorb;
 use ark_crypto_primitives::Error;

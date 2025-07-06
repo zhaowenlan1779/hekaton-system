@@ -8,7 +8,7 @@ use distributed_prover::{
 
 use std::path::PathBuf;
 
-use ark_bls12_381::{Bls12_381 as E, Fr};
+use ark_bn254::{Bn254 as E, Fr};
 use ark_std::{end_timer, start_timer};
 use clap::{Parser, Subcommand};
 

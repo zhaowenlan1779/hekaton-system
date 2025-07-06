@@ -11,7 +11,7 @@ use distributed_prover::{
 use rand::{Rng, SeedableRng};
 use rand_chacha::ChaCha12Rng;
 
-use ark_bls12_381::Fr;
+use ark_bn254::Fr;
 use ark_serialize::{CanonicalDeserialize, CanonicalSerialize};
 use clap::{Parser, Subcommand};
 use mimalloc::MiMalloc;
