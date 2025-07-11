@@ -156,6 +156,9 @@ enum Command {
         #[clap(long, value_name = "NUM")]
         num_subcircuits: usize,
 
+        #[clap(long, value_name = "NUM")]
+        num_txs: usize,
+
         #[clap(long, value_name = "DIR")]
         circuit_file: String,
 
@@ -211,11 +214,13 @@ fn main() {
         ),
         Command::SetupR1CS {
             num_subcircuits,
+            num_txs,
             circuit_file,
             key_out
         } => setup_r1cs(
             key_out,
             num_subcircuits,
+            num_txs,
             circuit_file,
         ),
         Command::Work {
@@ -428,17 +433,19 @@ fn setup_vm(
 fn setup_r1cs(
     key_out_path: PathBuf,
     num_subcircuits: usize,
+    num_txs: usize,
     circuit_path: String,
 ) {
     assert!(
         num_subcircuits.is_power_of_two(),
         "#subcircuits MUST be a power of 2"
     );
-    assert!(num_subcircuits > 1, "num. of subcircuits MUST be > 1");
+    assert!(num_subcircuits * num_txs > 1, "num. of subcircuits MUST be > 1");
 
     let circ_params = PartitionedR1CSCircuitParams {
         file_path: circuit_path,
         num_subcircuits,
+        num_txs,
     };
 
     let pks = ProvingKeys::new::<PartitionedR1CSCircuit<Fr>>(circ_params, R1CS_CIRCUIT_ID.to_string());

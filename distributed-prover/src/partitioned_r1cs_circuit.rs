@@ -29,6 +29,7 @@ pub struct PartitionedR1CSCircuit<F: PrimeField> {
 #[derive(Clone, CanonicalSerialize, CanonicalDeserialize)]
 pub struct PartitionedR1CSCircuitParams {
     pub num_subcircuits: usize,
+    pub num_txs: usize,
     pub file_path: String,
 }
 
@@ -38,7 +39,7 @@ impl<F: PrimeField> CircuitWithPortals<F> for PartitionedR1CSCircuit<F> {
     type ProverPortalManager = RomProverPortalManager<F>;
 
     fn num_subcircuits(&self) -> usize {
-        self.params.num_subcircuits
+        self.params.num_subcircuits * self.params.num_txs
     }
 
     /// Returns a minimal set of the unique subcircuits in this circuit. This is for CRS generation.
@@ -48,7 +49,7 @@ impl<F: PrimeField> CircuitWithPortals<F> for PartitionedR1CSCircuit<F> {
 
     /// Maps a subcircuit index to its canonical representative in the list of unique subcircuits returned by `get_unique_subcircuits`.
     fn representative_subcircuit(&self, subcircuit_idx: usize) -> usize {
-        subcircuit_idx
+        subcircuit_idx % self.params.num_subcircuits
     }
 
     fn get_params(&self) -> PartitionedR1CSCircuitParams {
@@ -100,7 +101,7 @@ impl<F: PrimeField> CircuitWithPortals<F> for PartitionedR1CSCircuit<F> {
     fn get_serialized_witnesses(&self, subcircuit_idx: usize) -> Vec<u8> {
         let mut out_buf = Vec::new();
         CanonicalSerialize::serialize_uncompressed(
-            &self.r1cs[subcircuit_idx].witness,
+            &self.r1cs[subcircuit_idx % self.params.num_subcircuits].witness,
             &mut out_buf,
         )
         .unwrap();
@@ -108,7 +109,7 @@ impl<F: PrimeField> CircuitWithPortals<F> for PartitionedR1CSCircuit<F> {
     }
 
     fn set_serialized_witnesses(&mut self, subcircuit_idx: usize, bytes: &[u8]) {
-        self.r1cs[subcircuit_idx].witness =
+        self.r1cs[subcircuit_idx % self.params.num_subcircuits].witness =
             Vec::<F>::deserialize_uncompressed_unchecked(bytes).unwrap();
     }
 
@@ -120,8 +121,9 @@ impl<F: PrimeField> CircuitWithPortals<F> for PartitionedR1CSCircuit<F> {
     ) -> Result<(), SynthesisError> {
         let starting_num_constraints = cs.num_constraints();
 
-        let r1cs = &self.r1cs[subcircuit_idx];
-        let (owned_portals, borrowed_portals) = &self.shared_wires[subcircuit_idx];
+        let r1cs = &self.r1cs[subcircuit_idx % self.params.num_subcircuits];
+        let (owned_portals, borrowed_portals) = &self.shared_wires[subcircuit_idx % self.params.num_subcircuits];
+        let group = subcircuit_idx / self.params.num_subcircuits;
         let num_unique_variables =
             r1cs.header.n_wires as usize - owned_portals.len() - borrowed_portals.len();
         let mut variables = (0..num_unique_variables)
@@ -136,14 +138,14 @@ impl<F: PrimeField> CircuitWithPortals<F> for PartitionedR1CSCircuit<F> {
                 let variable =
                     FpVar::new_witness(cs.clone(), || Ok(r1cs.witness[num_unique_variables + i]))
                         .unwrap();
-                pm.set(format!("var{}", var_index), &variable).unwrap();
+                pm.set(format!("var{}_{}", group, var_index), &variable).unwrap();
                 variable
             }))
             .collect::<Vec<_>>();
         variables.extend(
             borrowed_portals
                 .iter()
-                .map(|var_index| pm.get(&format!("var{}", var_index)).unwrap()),
+                .map(|var_index| pm.get(&format!("var{}_{}", group, var_index)).unwrap()),
         );
 
         let make_lc = |lc_data: &[(usize, F)]| {
@@ -163,6 +165,10 @@ impl<F: PrimeField> CircuitWithPortals<F> for PartitionedR1CSCircuit<F> {
             )?;
         }
 
+        if self.params.num_subcircuits == 1 {
+            pm.set(format!("dummy{}", subcircuit_idx), &FpVar::Constant(F::ZERO)).unwrap();
+        }
+
         let ending_num_constraints = cs.num_constraints();
         println!(
             "Test subcircuit {subcircuit_idx} costs {} constraints",
@@ -178,22 +184,27 @@ impl<F: PrimeField> CircuitWithPortals<F> for PartitionedR1CSCircuit<F> {
         let cs = ConstraintSystem::new_ref();
         let mut pm = SetupRomPortalManager::new(cs.clone());
 
-        for subcircuit_idx in 0..self.params.num_subcircuits {
+        for subcircuit_idx in 0..(self.params.num_subcircuits * self.params.num_txs) {
             pm.start_subtrace(ConstraintSystem::new_ref());
 
-            let r1cs = &self.r1cs[subcircuit_idx];
-            let (owned_portals, borrowed_portals) = &self.shared_wires[subcircuit_idx];
+            let r1cs = &self.r1cs[subcircuit_idx % self.params.num_subcircuits];
+            let (owned_portals, borrowed_portals) = &self.shared_wires[subcircuit_idx % self.params.num_subcircuits];
+            let group = subcircuit_idx / self.params.num_subcircuits;
             let num_unique_variables =
                 r1cs.header.n_wires as usize - owned_portals.len() - borrowed_portals.len();
             owned_portals.iter().enumerate().for_each(|(i, var_index)| {
                 let variable =
                     FpVar::new_witness(cs.clone(), || Ok(r1cs.witness[num_unique_variables + i]))
                         .unwrap();
-                pm.set(format!("var{}", var_index), &variable).unwrap();
+                pm.set(format!("var{}_{}", group, var_index), &variable).unwrap();
             });
             borrowed_portals.iter().for_each(|var_index| {
-                let _ = pm.get(&format!("var{}", var_index)).unwrap();
+                let _ = pm.get(&format!("var{}_{}", group, var_index)).unwrap();
             });
+
+            if self.params.num_subcircuits == 1 {
+                pm.set(format!("dummy{}", subcircuit_idx), &FpVar::Constant(F::ZERO)).unwrap();
+            }
         }
 
         // Return the subtraces, wrapped appropriately
