@@ -11,6 +11,7 @@ use ark_ip_proofs::tipa::Proof;
 use ark_serialize::{
     CanonicalDeserialize, CanonicalSerialize, Compress, SerializationError, Write,
 };
+use rand::SeedableRng;
 use std::collections::BTreeMap;
 
 pub type G16Proof = distributed_prover::util::G16Proof<E>;
@@ -50,7 +51,8 @@ pub struct ProvingKeys {
 
 impl ProvingKeys {
     pub fn new<P: CircuitWithPortals<Fr>>(circ_params: P::Parameters, id_str: String) -> Self {
-        let mut rng = rand::thread_rng();
+        let seed = [69u8; 32];
+        let mut rng = rand::rngs::StdRng::from_seed(seed);
 
         let circ = P::rand(&mut rng, &circ_params);
         let tree_params = gen_merkle_params();
